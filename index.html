@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14101f">
+<title>วิบ – คลิปสั้น</title>
+<script>
+// แสดงข้อผิดพลาดบนหน้าจอ (ช่วยหาสาเหตุเมื่อหน้าว่างเปล่า)
+function showDbg(msg){
+  var d=document.getElementById('dbg');
+  if(!d){d=document.createElement('div');d.id='dbg';
+    d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#3a0d18;color:#ffd0da;font:12px/1.4 monospace;padding:8px 10px;max-height:30vh;overflow:auto';
+    document.body.appendChild(d);}
+  d.textContent+=msg+'\n';
+}
+window.addEventListener('error',function(e){showDbg('ERR: '+e.message+(e.lineno?' (บรรทัด '+e.lineno+')':''))});
+window.addEventListener('unhandledrejection',function(e){showDbg('REJECT: '+((e.reason&&e.reason.message)||e.reason))});
+// โหลดไลบรารี Supabase จากหลายแหล่ง ถ้าแหล่งแรกใช้ไม่ได้จะลองแหล่งถัดไป
+function loadSupabase(cb){
+  var urls=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+            'https://unpkg.com/@supabase/supabase-js@2',
+            'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.3/umd/supabase.min.js'];
+  var i=0;
+  function next(){
+    if(window.supabase&&window.supabase.createClient)return cb();
+    if(i>=urls.length){
+      var f=document.getElementById('feed');
+      f.innerHTML='<div class="msg">โหลดระบบไม่สำเร็จ<br><small>เช็กอินเทอร์เน็ต แล้วโหลดหน้านี้ใหม่ หรือลองสลับ Wi-Fi/เน็ตมือถือ</small></div>';
+      return;
+    }
+    var url=urls[i++],done=false;
+    var sc=document.createElement('script');
+    function go(){if(done)return;done=true;next()}
+    sc.onload=go;sc.onerror=go;sc.src=url;
+    document.head.appendChild(sc);
+    setTimeout(go,8000);
+  }
+  next();
+}
+</script>
+<style>
+  :root{--ink:#14101f;--paper:#fff7ec;--pink:#ff3d7f;--lime:#c6f432;--sheet:#1d1830;color-scheme:dark}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--ink);color:var(--paper);font-family:"Sarabun","Noto Sans Thai","Leelawadee UI",system-ui,sans-serif;overflow:hidden}
+  button,input,textarea{font:inherit;color:inherit}
+  #app{position:relative;height:100dvh;max-width:480px;margin:0 auto;background:#000;overflow:hidden}
+  #feed{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;overscroll-behavior:contain}
+  #feed::-webkit-scrollbar{display:none}
+  .post{position:relative;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to top,rgba(0,0,0,.72),transparent 42%,transparent 78%,rgba(0,0,0,.4))}
+  .info{position:absolute;left:14px;right:84px;bottom:calc(26px + env(safe-area-inset-bottom))}
+  .who{font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;margin-bottom:6px;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+  .cap{font-size:15px;line-height:1.45;text-shadow:0 1px 8px rgba(0,0,0,.6);word-break:break-word}
+  .follow{border:1.5px solid var(--paper);background:transparent;border-radius:6px;padding:3px 10px;font-size:13px;font-weight:700;cursor:pointer}
+  .follow.on{background:var(--paper);color:var(--ink)}
+  .rail{position:absolute;right:10px;bottom:calc(30px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:18px;align-items:center}
+  .act{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700;cursor:pointer;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+  .act svg{width:36px;height:36px;fill:var(--paper);filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));transition:transform .15s}
+  .act:active svg{transform:scale(.82)}
+  .act.liked svg{fill:var(--pink);animation:pop .35s}
+  .act.del{font-size:24px}
+  @keyframes pop{50%{transform:scale(1.35)}}
+  .burst{position:absolute;font-size:96px;pointer-events:none;animation:burst .8s ease-out forwards;transform:translate(-50%,-50%)}
+  @keyframes burst{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}25%{opacity:1;transform:translate(-50%,-60%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-140%)}}
+  .pausemark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:80px;opacity:0;pointer-events:none;transition:opacity .2s}
+  .post.paused .pausemark{opacity:.85}
+  .bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.2)}
+  .bar i{display:block;height:100%;width:0;background:var(--lime)}
+
+  .top{position:absolute;top:0;left:0;right:0;z-index:5;padding:calc(12px + env(safe-area-inset-top)) 14px 0;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
+  .top>*{pointer-events:auto}
+  .tabs{display:flex;gap:18px;font-weight:800;font-size:17px;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+  .tab{background:none;border:0;opacity:.6;padding:4px 0;cursor:pointer;border-bottom:3px solid transparent}
+  .tab.on{opacity:1;border-color:var(--lime)}
+  .iconbtn{background:rgba(0,0,0,.4);border:0;border-radius:50%;width:38px;height:38px;display:grid;place-items:center;cursor:pointer;font-size:18px}
+  .right{display:flex;gap:8px}
+
+  .msg{position:absolute;inset:0;display:grid;place-content:center;text-align:center;padding:30px;line-height:1.6;font-size:17px}
+  .msg small{opacity:.7;font-size:14px}
+  .msg button{margin-top:16px}
+
+  .overlay{position:absolute;inset:0;z-index:25;background:rgba(10,8,18,.9);display:none;align-items:center;justify-content:center;padding:20px}
+  .overlay.open{display:flex}
+  .card{width:100%;background:var(--sheet);border-radius:20px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .card h2{font-size:22px;margin-bottom:4px}
+  .card p.sub{opacity:.7;font-size:14px;margin-bottom:16px}
+  .field{width:100%;background:#2b2445;border:0;border-radius:12px;padding:13px 14px;margin-bottom:10px;font-size:16px;outline:none}
+  .field:focus-visible{outline:2px solid var(--lime)}
+  textarea.field{resize:none;height:84px}
+  .primary{width:100%;background:var(--pink);color:#fff;border:0;border-radius:12px;padding:13px;font-weight:800;font-size:16px;cursor:pointer}
+  .primary:disabled{opacity:.5}
+  .ghost{background:none;border:0;color:var(--paper);opacity:.75;padding:10px;width:100%;cursor:pointer;font-size:14px}
+  .err{color:#ff8fae;font-size:14px;min-height:20px;margin-bottom:6px}
+  .filebtn{display:block;text-align:center;border:2px dashed rgba(255,255,255,.3);border-radius:12px;padding:22px 10px;margin-bottom:10px;cursor:pointer}
+  .filebtn.has{border-color:var(--lime);color:var(--lime)}
+
+  #sheet{position:absolute;z-index:20;left:0;right:0;bottom:0;height:68%;background:var(--sheet);border-radius:20px 20px 0 0;transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:0 -10px 40px rgba(0,0,0,.5)}
+  #sheet.open{transform:none}
+  #scrim{position:absolute;inset:0;z-index:19;background:rgba(0,0,0,.45);display:none}
+  #scrim.open{display:block}
+  .sh-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;font-weight:800;border-bottom:1px solid rgba(255,255,255,.1)}
+  .sh-head button{background:none;border:0;font-size:22px;cursor:pointer}
+  #clist{flex:1;overflow-y:auto;padding:8px 16px}
+  .cm{padding:10px 0}
+  .cm b{font-size:13px;opacity:.75;display:block}
+  .cm p{font-size:15px;line-height:1.4;word-break:break-word}
+  .cin{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.1)}
+  .cin input{flex:1;background:#2b2445;border:0;border-radius:22px;padding:11px 16px;outline:none}
+  .cin input:focus-visible{outline:2px solid var(--lime)}
+  .cin button{background:var(--pink);border:0;color:#fff;border-radius:22px;padding:0 18px;font-weight:800;cursor:pointer}
+  .uname{background:none;border:0;font-weight:800;font-size:17px;cursor:pointer;padding:0;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+  .act.rep .flag{font-size:26px;line-height:36px;height:36px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}
+  .reason{display:block;width:100%;text-align:left;background:#2b2445;border:2px solid transparent;border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-size:16px}
+  .reason.on{border-color:var(--lime)}
+  #chip{position:absolute;z-index:6;left:50%;top:calc(62px + env(safe-area-inset-top));transform:translateX(-50%);display:none;background:var(--paper);color:var(--ink);border:0;border-radius:20px;padding:6px 14px;font-weight:800;font-size:14px;cursor:pointer}
+  .big{font-size:48px;line-height:1.2}
+  .outline{background:transparent;border:1.5px solid rgba(255,255,255,.35);margin-bottom:8px}
+  .soft{background:#3a3158;margin-bottom:8px}
+  #toast{position:absolute;z-index:40;left:50%;top:70px;transform:translateX(-50%) translateY(-20px);background:var(--paper);color:var(--ink);padding:9px 16px;border-radius:20px;font-weight:700;font-size:14px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;text-align:center}
+  #toast.show{opacity:1;transform:translateX(-50%)}
+  button:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <button class="iconbtn" id="upBtn" title="โพสต์คลิป" aria-label="โพสต์คลิป">＋</button>
+    <div class="tabs">
+      <button class="tab" data-tab="follow">กำลังติดตาม</button>
+      <button class="tab on" data-tab="all">สำหรับคุณ</button>
+    </div>
+    <div class="right">
+      <button class="iconbtn" id="mute" aria-label="เปิด/ปิดเสียง">🔇</button>
+      <button class="iconbtn" id="meBtn" aria-label="บัญชี">👤</button>
+    </div>
+  </div>
+  <div id="feed"><div class="msg">กำลังโหลด...</div></div>
+
+  <div id="scrim"></div>
+  <div id="sheet" aria-hidden="true">
+    <div class="sh-head"><span id="ctitle">ความคิดเห็น</span><button id="cclose" aria-label="ปิด">✕</button></div>
+    <div id="clist"></div>
+    <div class="cin"><input id="cinput" placeholder="เพิ่มความคิดเห็น..." maxlength="200"><button id="csend">ส่ง</button></div>
+  </div>
+
+  <!-- เข้าสู่ระบบ / สมัครสมาชิก -->
+  <div class="overlay" id="authOv">
+    <div class="card">
+      <h2 id="authTitle">เข้าสู่ระบบ</h2>
+      <p class="sub">เข้าสู่ระบบเพื่อไลก์ คอมเมนต์ ติดตาม และโพสต์คลิป</p>
+      <input class="field" id="aUser" placeholder="ชื่อผู้ใช้ (2–24 ตัวอักษร)" maxlength="24" autocomplete="username" style="display:none">
+      <input class="field" id="aEmail" type="email" placeholder="อีเมล" autocomplete="email">
+      <input class="field" id="aPass" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" autocomplete="current-password">
+      <div class="err" id="aErr"></div>
+      <button class="primary" id="aGo">เข้าสู่ระบบ</button>
+      <button class="ghost" id="aSwap">ยังไม่มีบัญชี? สมัครสมาชิก</button>
+      <button class="ghost" id="aClose">ไว้ทีหลัง</button>
+    </div>
+  </div>
+
+  <!-- โพสต์คลิป -->
+  <div class="overlay" id="upOv">
+    <div class="card">
+      <h2>โพสต์คลิปใหม่</h2>
+      <p class="sub">ไฟล์ MP4, WebM หรือ MOV ไม่เกิน 50 MB</p>
+      <label class="filebtn" id="fileLbl" for="file">แตะเพื่อเลือกวิดีโอ</label>
+      <input type="file" id="file" accept="video/mp4,video/webm,video/quicktime" hidden>
+      <textarea class="field" id="upCap" placeholder="เขียนคำบรรยาย #แฮชแท็ก" maxlength="300"></textarea>
+      <div class="err" id="upErr"></div>
+      <button class="primary" id="upGo">โพสต์</button>
+      <button class="ghost" id="upClose">ยกเลิก</button>
+    </div>
+  </div>
+  <!-- โปรไฟล์ -->
+  <div class="overlay" id="profOv">
+    <div class="card" style="text-align:center">
+      <div class="big">😎</div>
+      <h2 id="pName"></h2>
+      <p class="sub" id="pStats">กำลังโหลด...</p>
+      <button class="primary soft" id="pFollow" style="display:none"></button>
+      <button class="primary" id="pView" style="margin-bottom:8px">ดูคลิปทั้งหมด</button>
+      <button class="primary outline" id="pOut" style="display:none">ออกจากระบบ</button>
+      <button class="ghost" id="pClose">ปิด</button>
+    </div>
+  </div>
+
+  <!-- รีพอร์ตคลิป -->
+  <div class="overlay" id="repOv">
+    <div class="card">
+      <h2>รีพอร์ตคลิป</h2>
+      <p class="sub">เลือกเหตุผล คลิปที่ถูกรีพอร์ตจากหลายบัญชีจะถูกซ่อนอัตโนมัติ และเจ้าของแอพจะตรวจสอบ</p>
+      <div id="reasons"></div>
+      <div class="err" id="repErr"></div>
+      <button class="primary" id="repGo">ส่งรีพอร์ต</button>
+      <button class="ghost" id="repClose">ยกเลิก</button>
+    </div>
+  </div>
+
+  <button id="chip"></button>
+  <div id="toast"></div>
+</div>
+
+<script>
+function startApp(){
+// ====== ตั้งค่า: ใส่ค่าจาก Supabase > Project Settings > API ======
+const SUPABASE_URL = 'https://yqhifmlnngdkdinftuxx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Gib9qiAGmGBw0JVtpqt46w_dQlEd342';
+// ================================================================
+
+const HEART='<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.7-9.6-9.5C.9 8 3 4.500 6.400 4.500c2 0 3.700 1.100 4.600 2.700h2c.9-1.600 2.600-2.700 4.600-2.700 3.400 0 5.500 3.500 4 7C19.500 16.300 12 21 12 21z"/></svg>';
+const CHAT='<svg viewBox="0 0 24 24"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>';
+const SHARE='<svg viewBox="0 0 24 24"><path d="M14 3l8 8-8 8v-5c-6 0-9.500 2-12 6 1-7 5-11 12-12V3z"/></svg>';
+
+const $=id=>document.getElementById(id);
+const feed=$('feed');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>n>=1e4?(n/1e4).toFixed(1)+' หมื่น':n>=1e3?(n/1e3).toFixed(1)+' พัน':n;
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2000)}
+
+if(SUPABASE_URL.includes('YOUR-PROJECT')){
+  feed.innerHTML='<div class="msg">ยังไม่ได้ตั้งค่า Supabase<br><small>เปิดไฟล์ index.html แล้วใส่ SUPABASE_URL และ SUPABASE_KEY ตามขั้นตอนใน README.md</small></div>';
+  throw new Error('Supabase not configured');
+}
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+let me=null, myName='', videos=[], liked=new Set(), following=new Set(), tab='all', muted=true, current=null, commentVideo=null;
+const byId=id=>videos.find(v=>String(v.id)===String(id));
+const publicUrl=p=>sb.storage.from('videos').getPublicUrl(p).data.publicUrl;
+
+// ---------- บัญชีผู้ใช้ ----------
+async function loadMine(){
+  liked=new Set();following=new Set();
+  if(!me)return;
+  const [l,f,p]=await Promise.all([
+    sb.from('likes').select('video_id').eq('user_id',me.id),
+    sb.from('follows').select('following_id').eq('follower_id',me.id),
+    sb.from('profiles').select('username').eq('id',me.id).single()
+  ]);
+  (l.data||[]).forEach(r=>liked.add(r.video_id));
+  (f.data||[]).forEach(r=>following.add(r.following_id));
+  myName=p.data?.username||'';
+}
+function needLogin(){ if(me)return true; openAuth(); return false }
+
+let signup=false;
+function setMode(s){
+  signup=s;
+  $('authTitle').textContent=s?'สมัครสมาชิก':'เข้าสู่ระบบ';
+  $('aGo').textContent=s?'สมัครสมาชิก':'เข้าสู่ระบบ';
+  $('aSwap').textContent=s?'มีบัญชีแล้ว? เข้าสู่ระบบ':'ยังไม่มีบัญชี? สมัครสมาชิก';
+  $('aUser').style.display=s?'block':'none';
+  $('aPass').autocomplete=s?'new-password':'current-password';
+  $('aErr').textContent='';
+}
+function openAuth(){setMode(false);$('authOv').classList.add('open')}
+$('aSwap').onclick=()=>setMode(!signup);
+$('aClose').onclick=()=>$('authOv').classList.remove('open');
+$('aGo').onclick=async()=>{
+  const email=$('aEmail').value.trim(),password=$('aPass').value,username=$('aUser').value.trim();
+  const err=$('aErr');err.textContent='';
+  if(!email||!password){err.textContent='กรอกอีเมลและรหัสผ่านก่อน';return}
+  if(signup&&(username.length<2||username.length>24)){err.textContent='ชื่อผู้ใช้ต้องยาว 2–24 ตัวอักษร';return}
+  $('aGo').disabled=true;
+  try{
+    if(signup){
+      const {data,error}=await sb.auth.signUp({email,password,options:{data:{username}}});
+      if(error)throw error;
+      if(!data.session){toast('สมัครแล้ว ตรวจอีเมลเพื่อยืนยันบัญชี');$('authOv').classList.remove('open')}
+    }else{
+      const {error}=await sb.auth.signInWithPassword({email,password});
+      if(error)throw error;
+    }
+  }catch(e){
+    const m=e.message||'';
+    err.textContent=/Invalid login/i.test(m)?'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
+      :/already|registered/i.test(m)?'อีเมลนี้สมัครไว้แล้ว'
+      :/Database error/i.test(m)?'ชื่อผู้ใช้นี้มีคนใช้แล้ว ลองชื่ออื่น'
+      :/at least|Password/i.test(m)?'รหัสผ่านต้องมีอย่างน้อย 6 ตัว':'เกิดข้อผิดพลาด: '+m;
+  }
+  $('aGo').disabled=false;
+};
+sb.auth.onAuthStateChange((_e,session)=>{
+  me=session?.user||null;
+  if(me){$('authOv').classList.remove('open');$('meBtn').textContent='😎'}else $('meBtn').textContent='👤';
+  setTimeout(async()=>{ await loadMine(); await loadFeed(); },0);
+});
+$('meBtn').onclick=()=>{
+  if(!me)return openAuth();
+  openProfile(me.id,myName||'ฉัน');
+};
+
+// ---------- ฟีด ----------
+const SELECT='id,caption,video_path,created_at,user_id,profiles!videos_user_id_fkey(username),likes(count),comments(count)';
+let userFilter=null;
+$('chip').onclick=()=>{userFilter=null;loadFeed()};
+async function loadFeed(){
+  feed.innerHTML='<div class="msg">กำลังโหลด...</div>';
+  $('chip').style.display=userFilter?'block':'none';
+  if(userFilter)$('chip').textContent='คลิปของ @'+userFilter.name+'  ✕';
+  let q=sb.from('videos').select(SELECT).order('created_at',{ascending:false}).limit(30);
+  if(userFilter){
+    q=q.eq('user_id',userFilter.id);
+  }else if(tab==='follow'){
+    if(!me){feed.innerHTML='<div class="msg">เข้าสู่ระบบเพื่อดูคลิปจากคนที่ติดตาม<br><button class="primary" id="goLogin">เข้าสู่ระบบ</button></div>';$('goLogin').onclick=openAuth;return}
+    if(!following.size){feed.innerHTML='<div class="msg">ยังไม่ได้ติดตามใคร<br><small>กด “ติดตาม” ที่คลิปในหน้า “สำหรับคุณ”</small></div>';return}
+    q=q.in('user_id',[...following]);
+  }
+  const {data,error}=await q;
+  if(error){feed.innerHTML='<div class="msg">โหลดไม่สำเร็จ<br><small>'+esc(error.message)+'</small></div>';return}
+  videos=(data||[]).map(v=>({...v,user:v.profiles?.username||'ไม่ทราบชื่อ',likes:v.likes?.[0]?.count||0,comments:v.comments?.[0]?.count||0,shares:0}));
+  if(!videos.length){feed.innerHTML='<div class="msg">ยังไม่มีคลิป<br><small>กด ＋ เพื่อโพสต์คลิปแรก</small></div>';return}
+  draw();
+}
+function postHTML(v){
+  const isMine=me&&v.user_id===me.id, on=following.has(v.user_id);
+  return `<section class="post" data-id="${v.id}">
+    <video src="${esc(publicUrl(v.video_path))}" loop playsinline muted preload="metadata"></video>
+    <div class="shade"></div><div class="pausemark">⏸</div>
+    <div class="info">
+      <div class="who"><button class="uname" data-uid="${v.user_id}" data-name="${esc(v.user)}">@${esc(v.user)}</button>${isMine?'':`<button class="follow ${on?'on':''}" data-uid="${v.user_id}">${on?'ติดตามแล้ว':'ติดตาม'}</button>`}</div>
+      <div class="cap">${esc(v.caption)}</div>
+    </div>
+    <div class="rail">
+      <button class="act like ${liked.has(v.id)?'liked':''}" aria-label="ไลก์">${HEART}<span class="n">${fmt(v.likes)}</span></button>
+      <button class="act cmt" aria-label="ความคิดเห็น">${CHAT}<span class="n">${fmt(v.comments)}</span></button>
+      <button class="act shr" aria-label="แชร์">${SHARE}<span>แชร์</span></button>
+      ${isMine?'<button class="act del" aria-label="ลบคลิป">🗑</button>':'<button class="act rep" aria-label="รีพอร์ตคลิป"><span class="flag">⚑</span><span>รีพอร์ต</span></button>'}
+    </div>
+    <div class="bar"><i></i></div></section>`;
+}
+function draw(){
+  io.disconnect();
+  feed.innerHTML=videos.map(postHTML).join('');
+  feed.querySelectorAll('.post').forEach(p=>io.observe(p));
+  feed.scrollTop=0;
+  const target=location.hash&&feed.querySelector(`.post[data-id="${CSS.escape(location.hash.slice(1))}"]`);
+  if(target)target.scrollIntoView();
+}
+const io=new IntersectionObserver(es=>{
+  es.forEach(en=>{
+    const el=en.target,vd=el.querySelector('video');
+    if(en.isIntersecting&&en.intersectionRatio>.6){
+      el.classList.remove('paused');current=el;vd.muted=muted;vd.play().catch(()=>{});
+    }else{vd.pause();vd.currentTime=0}
+  });
+},{root:feed,threshold:[0,.6,1]});
+setInterval(()=>{if(!current)return;const vd=current.querySelector('video');
+  if(vd&&vd.duration)current.querySelector('.bar i').style.width=(vd.currentTime/vd.duration*100)+'%'},200);
+
+// ---------- การกระทำในฟีด ----------
+let lastTap=0,tapTimer;
+feed.addEventListener('click',e=>{
+  const post=e.target.closest('.post');if(!post)return;
+  const v=byId(post.dataset.id);if(!v)return;
+  const btn=e.target.closest('button');
+  if(btn){
+    if(btn.classList.contains('like'))return toggleLike(v,post);
+    if(btn.classList.contains('cmt'))return openComments(v);
+    if(btn.classList.contains('shr'))return share(v);
+    if(btn.classList.contains('follow'))return toggleFollow(v);
+    if(btn.classList.contains('del'))return removeVideo(v);
+    if(btn.classList.contains('rep'))return openReport(v);
+    if(btn.classList.contains('uname'))return openProfile(btn.dataset.uid,btn.dataset.name);
+    return;
+  }
+  const now=Date.now();
+  if(now-lastTap<300){
+    clearTimeout(tapTimer);lastTap=0;
+    const h=document.createElement('div');h.className='burst';h.textContent='❤️';
+    const r=post.getBoundingClientRect();h.style.left=(e.clientX-r.left)+'px';h.style.top=(e.clientY-r.top)+'px';
+    post.appendChild(h);setTimeout(()=>h.remove(),800);
+    if(!liked.has(v.id))toggleLike(v,post);
+  }else{
+    lastTap=now;
+    tapTimer=setTimeout(()=>{const vd=post.querySelector('video');post.classList.toggle('paused');post.classList.contains('paused')?vd.pause():vd.play()},300);
+  }
+});
+function paintLike(post,v){
+  post.querySelector('.like').classList.toggle('liked',liked.has(v.id));
+  post.querySelector('.like .n').textContent=fmt(v.likes);
+}
+async function toggleLike(v,post){
+  if(!needLogin())return;
+  const was=liked.has(v.id);
+  was?liked.delete(v.id):liked.add(v.id);v.likes+=was?-1:1;paintLike(post,v);
+  const {error}=was
+    ?await sb.from('likes').delete().match({user_id:me.id,video_id:v.id})
+    :await sb.from('likes').insert({user_id:me.id,video_id:v.id});
+  if(error){was?liked.add(v.id):liked.delete(v.id);v.likes+=was?1:-1;paintLike(post,v);toast('ไลก์ไม่สำเร็จ ลองใหม่')}
+}
+async function toggleFollow(v){
+  if(!needLogin())return;
+  const uid=v.user_id,was=following.has(uid);
+  was?following.delete(uid):following.add(uid);
+  repaintFollow(uid);
+  const {error}=was
+    ?await sb.from('follows').delete().match({follower_id:me.id,following_id:uid})
+    :await sb.from('follows').insert({follower_id:me.id,following_id:uid});
+  if(error){was?following.add(uid):following.delete(uid);repaintFollow(uid);toast('ติดตามไม่สำเร็จ ลองใหม่')}
+  else toast(was?'เลิกติดตามแล้ว':'ติดตามแล้ว');
+}
+function repaintFollow(uid){
+  feed.querySelectorAll('.follow').forEach(b=>{
+    if(b.dataset.uid!==uid)return;const on=following.has(uid);
+    b.classList.toggle('on',on);b.textContent=on?'ติดตามแล้ว':'ติดตาม';
+  });
+}
+async function share(v){
+  const url=location.href.split('#')[0]+'#'+v.id;
+  try{ if(navigator.share)await navigator.share({title:'วิบ',text:v.caption||'ดูคลิปนี้',url}); else{await navigator.clipboard.writeText(url);toast('คัดลอกลิงก์แล้ว')} }catch(e){}
+}
+async function removeVideo(v){
+  if(!confirm('ลบคลิปนี้ถาวรไหม?'))return;
+  const {error}=await sb.from('videos').delete().eq('id',v.id);
+  if(error)return toast('ลบไม่สำเร็จ');
+  await sb.storage.from('videos').remove([v.video_path]);
+  toast('ลบแล้ว');loadFeed();
+}
+
+// ---------- ความคิดเห็น ----------
+async function openComments(v){
+  commentVideo=v;
+  $('sheet').classList.add('open');$('scrim').classList.add('open');$('sheet').setAttribute('aria-hidden','false');
+  $('clist').innerHTML='<div class="msg" style="position:static;padding:40px 0;font-size:15px">กำลังโหลด...</div>';
+  const {data,error}=await sb.from('comments').select('body,profiles(username)').eq('video_id',v.id).order('created_at').limit(200);
+  if(error){$('clist').textContent='โหลดไม่สำเร็จ';return}
+  drawComments(data||[]);
+}
+function drawComments(list){
+  $('ctitle').textContent=list.length+' ความคิดเห็น';
+  $('clist').innerHTML=list.length
+    ?list.map(c=>`<div class="cm"><b>@${esc(c.profiles?.username||'?')}</b><p>${esc(c.body)}</p></div>`).join('')
+    :'<div style="text-align:center;opacity:.6;padding:40px 0">ยังไม่มีความคิดเห็น เป็นคนแรกเลย</div>';
+  $('clist').scrollTop=$('clist').scrollHeight;
+}
+function closeComments(){$('sheet').classList.remove('open');$('scrim').classList.remove('open');$('sheet').setAttribute('aria-hidden','true')}
+$('cclose').onclick=closeComments;$('scrim').onclick=closeComments;
+async function sendComment(){
+  if(!needLogin())return;
+  const body=$('cinput').value.trim();if(!body)return;
+  $('cinput').value='';
+  const {error}=await sb.from('comments').insert({video_id:commentVideo.id,user_id:me.id,body});
+  if(error)return toast('ส่งความคิดเห็นไม่สำเร็จ');
+  commentVideo.comments++;
+  const post=feed.querySelector(`.post[data-id="${commentVideo.id}"] .cmt .n`);if(post)post.textContent=fmt(commentVideo.comments);
+  openComments(commentVideo);
+}
+$('csend').onclick=sendComment;
+$('cinput').addEventListener('keydown',e=>{if(e.key==='Enter')sendComment()});
+
+// ---------- โพสต์คลิป ----------
+let picked=null;
+$('upBtn').onclick=()=>{ if(!needLogin())return; $('upErr').textContent='';$('upOv').classList.add('open') };
+$('upClose').onclick=()=>$('upOv').classList.remove('open');
+$('file').onchange=e=>{
+  picked=e.target.files[0]||null;
+  $('fileLbl').textContent=picked?'✓ '+picked.name:'แตะเพื่อเลือกวิดีโอ';
+  $('fileLbl').classList.toggle('has',!!picked);
+};
+$('upGo').onclick=async()=>{
+  const err=$('upErr');err.textContent='';
+  if(!picked){err.textContent='เลือกวิดีโอก่อน';return}
+  if(!/^video\/(mp4|webm|quicktime)$/.test(picked.type)){err.textContent='รองรับเฉพาะ MP4, WebM, MOV';return}
+  if(picked.size>50*1024*1024){err.textContent='ไฟล์ใหญ่เกิน 50 MB';return}
+  $('upGo').disabled=true;$('upGo').textContent='กำลังอัปโหลด...';
+  try{
+    const ext=(picked.name.split('.').pop()||'mp4').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const path=`${me.id}/${Date.now()}.${ext}`;
+    const up=await sb.storage.from('videos').upload(path,picked,{contentType:picked.type});
+    if(up.error)throw up.error;
+    const ins=await sb.from('videos').insert({user_id:me.id,caption:$('upCap').value.trim(),video_path:path});
+    if(ins.error){await sb.storage.from('videos').remove([path]);throw ins.error}
+    picked=null;$('file').value='';$('upCap').value='';$('fileLbl').textContent='แตะเพื่อเลือกวิดีโอ';$('fileLbl').classList.remove('has');
+    $('upOv').classList.remove('open');toast('โพสต์แล้ว');
+    tab='all';userFilter=null;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.tab==='all'));
+    loadFeed();
+  }catch(e){err.textContent='อัปโหลดไม่สำเร็จ: '+(e.message||'ลองใหม่')}
+  $('upGo').disabled=false;$('upGo').textContent='โพสต์';
+};
+
+// ---------- โปรไฟล์ ----------
+let prof=null;
+function paintPFollow(){
+  if(!prof)return;
+  const on=following.has(prof.id);
+  $('pFollow').textContent=on?'ติดตามแล้ว':'ติดตาม';
+}
+async function openProfile(uid,name){
+  prof={id:uid,name};
+  const mine=!!me&&me.id===uid;
+  $('pName').textContent='@'+name;
+  $('pStats').textContent='กำลังโหลด...';
+  $('pFollow').style.display=mine?'none':'block';
+  $('pOut').style.display=mine?'block':'none';
+  paintPFollow();
+  $('profOv').classList.add('open');
+  const [a,b]=await Promise.all([
+    sb.from('videos').select('id',{count:'exact',head:true}).eq('user_id',uid),
+    sb.from('follows').select('follower_id',{count:'exact',head:true}).eq('following_id',uid)
+  ]);
+  if(prof&&prof.id===uid)$('pStats').textContent=`${a.count||0} คลิป  •  ${b.count||0} ผู้ติดตาม`;
+}
+$('pClose').onclick=()=>{$('profOv').classList.remove('open');prof=null};
+$('pFollow').onclick=async()=>{
+  if(!me){$('profOv').classList.remove('open');return needLogin()}
+  const p=prof;
+  await toggleFollow({user_id:p.id});
+  paintPFollow();
+  openProfile(p.id,p.name);
+};
+$('pView').onclick=()=>{
+  userFilter={id:prof.id,name:prof.name};
+  $('profOv').classList.remove('open');prof=null;
+  loadFeed();
+};
+$('pOut').onclick=async()=>{
+  $('profOv').classList.remove('open');prof=null;
+  userFilter=null;
+  await sb.auth.signOut();toast('ออกจากระบบแล้ว');
+};
+
+// ---------- รีพอร์ตคลิป ----------
+const REASONS=[['spam','สแปมหรือโฆษณา'],['inappropriate','เนื้อหาไม่เหมาะสม'],['violence','ความรุนแรง'],['copyright','ละเมิดลิขสิทธิ์'],['other','อื่น ๆ']];
+let repV=null,repReason=null;
+function drawReasons(){
+  $('reasons').innerHTML=REASONS.map(([k,t])=>`<button class="reason ${repReason===k?'on':''}" data-r="${k}">${t}</button>`).join('');
+}
+$('reasons').addEventListener('click',e=>{
+  const b=e.target.closest('.reason');if(!b)return;
+  repReason=b.dataset.r;drawReasons();$('repErr').textContent='';
+});
+function openReport(v){
+  if(!needLogin())return;
+  repV=v;repReason=null;$('repErr').textContent='';
+  drawReasons();$('repOv').classList.add('open');
+}
+$('repClose').onclick=()=>{$('repOv').classList.remove('open');repV=null};
+$('repGo').onclick=async()=>{
+  if(!repReason){$('repErr').textContent='เลือกเหตุผลก่อน';return}
+  $('repGo').disabled=true;
+  const v=repV;
+  const {error}=await sb.from('reports').insert({video_id:v.id,reporter_id:me.id,reason:repReason});
+  $('repGo').disabled=false;
+  if(error&&error.code!=='23505'){
+    $('repErr').textContent='ส่งรีพอร์ตไม่สำเร็จ ลองใหม่อีกครั้ง';
+    return;
+  }
+  $('repOv').classList.remove('open');repV=null;
+  toast(error?'คุณรีพอร์ตคลิปนี้ไว้แล้ว':'ส่งรีพอร์ตแล้ว ขอบคุณที่ช่วยดูแล');
+  // ซ่อนคลิปนี้จากหน้าจอของผู้รีพอร์ตทันที
+  const el=feed.querySelector(`.post[data-id="${v.id}"]`);
+  if(el){io.unobserve(el);el.remove()}
+  videos=videos.filter(x=>x.id!==v.id);
+  if(!videos.length)loadFeed();
+};
+
+// ---------- แท็บ / เสียง ----------
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
+  tab=b.dataset.tab;userFilter=null;loadFeed();
+});
+$('mute').onclick=function(){
+  muted=!muted;this.textContent=muted?'🔇':'🔊';
+  document.querySelectorAll('video').forEach(v=>v.muted=muted);
+};
+addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;
+  if(e.key==='ArrowDown')feed.scrollBy({top:innerHeight,behavior:'smooth'});
+  if(e.key==='ArrowUp')feed.scrollBy({top:-innerHeight,behavior:'smooth'});
+});
+}
+loadSupabase(startApp);
+</script>
+</body>
+</html>
